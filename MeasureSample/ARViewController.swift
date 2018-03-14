@@ -13,9 +13,9 @@ enum MeasureState {
     case active
 }
 
-class ViewController: UIViewController, ARSCNViewDelegate {
+class ARViewController: UIViewController, ARSCNViewDelegate {
 
-    var sceneView = ARSCNView()
+    let sceneView = ARSCNView()
     let messageLabel = UILabel()
     let centerMark = UIImageView()
     let label = UILabel()
@@ -23,7 +23,18 @@ class ViewController: UIViewController, ARSCNViewDelegate {
     var timer: Timer!
     var cylinderNode: SCNNode?
     var measureState: MeasureState = .deactive
+    let handler: (([String]) -> ())
+    var measureResults: [String] = []
 
+
+    init(handler: @escaping (([String]) -> ())) {
+        self.handler = handler
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder aDecoder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -39,11 +50,8 @@ class ViewController: UIViewController, ARSCNViewDelegate {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
 
-        // Create a session configuration
-        //       let configuration = ARWorldTrackingSessionConfiguration()
         let configuration = ARWorldTrackingConfiguration()
 
-        // Run the view's session
         sceneView.session.run(configuration)
 
         timer = Timer.scheduledTimer(timeInterval: 0.1, target: self, selector: #selector(update), userInfo: nil, repeats: true)
@@ -58,10 +66,15 @@ class ViewController: UIViewController, ARSCNViewDelegate {
     }
 
     fileprivate func configureSubviews() {
+        self.view.backgroundColor = .black
+        self.navigationItem.leftBarButtonItem = UIBarButtonItem(title: "Cancel", style: .done, target: self, action: #selector(cancel))
+        self.navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Complete", style: .plain, target: self, action: #selector(completeMeasure))
+
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(tapScreen))
         view.addGestureRecognizer(tapGesture)
 
         centerMark.image = UIImage(named: "CenterMark")
+
     }
 
     fileprivate func setConstraints() {
@@ -142,6 +155,14 @@ class ViewController: UIViewController, ARSCNViewDelegate {
         return node
     }
 
+    @objc private func cancel() {
+        dismiss(animated: true, completion: nil)
+    }
+
+    @objc private func completeMeasure() {
+        handler(measureResults)
+        dismiss(animated: true, completion: nil)
+    }
 
     @objc func tapScreen() {
         switch measureState {
@@ -149,7 +170,25 @@ class ViewController: UIViewController, ARSCNViewDelegate {
             beginMeasure()
         case .active:
             endMeasure()
+            saveResult()
         }
+    }
+
+    private func saveResult() {
+        let alert = UIAlertController(title: "計測結果", message: label.text, preferredStyle: .alert)
+        let action = UIAlertAction(title: "save", style: .default, handler: { _ in
+            if let text = self.label.text {
+                self.measureResults.append(text)
+            }
+        })
+        let cancel = UIAlertAction(title: "cancel", style: .cancel, handler: { _ in
+            if let text = self.label.text {
+                self.measureResults.append(text)
+            }
+        })
+        alert.addAction(action)
+        alert.addAction(cancel)
+        self.present(alert, animated: true, completion: nil)
     }
 
     // 計測開始
@@ -227,7 +266,7 @@ class ViewController: UIViewController, ARSCNViewDelegate {
             if let endPosition = getCenter() {
                 let position = SCNVector3Make(endPosition.x - startPosition.x, endPosition.y - startPosition.y, endPosition.z - startPosition.z)
                 let distance = sqrt(position.x*position.x + position.y*position.y + position.z*position.z)
-                label.text = String.init(format: "約 %.1f cm", arguments: [distance * 100])
+                label.text = String.init(format: "約%.1fcm", arguments: [distance * 100])
 
                 refreshCylinderNode(endPosition: endPosition)
             }
@@ -249,9 +288,6 @@ class ViewController: UIViewController, ARSCNViewDelegate {
         timer.invalidate()
     }
 
-    override func didReceiveMemoryWarning() {
-        super.didReceiveMemoryWarning()
-    }
 
     // MARK: - ARSCNViewDelegate
     /*
